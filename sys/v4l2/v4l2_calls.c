@@ -2,6 +2,7 @@
  *
  * Copyright (C) 2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2014 Renesas Electronics Corporation
  *
  * v4l2_calls.c - generic V4L2 calls handling
  *
@@ -533,7 +534,8 @@ gst_v4l2_open (GstV4l2Object * v4l2object)
     goto not_capture;
 
   if (GST_IS_V4L2SINK (v4l2object->element) &&
-      !(v4l2object->vcap.capabilities & V4L2_CAP_VIDEO_OUTPUT))
+      !(v4l2object->vcap.capabilities & V4L2_CAP_VIDEO_OUTPUT) &&
+      !(v4l2object->vcap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE))
     goto not_output;
 
   /* create enumerations, posts errors. */

@@ -2,6 +2,7 @@
  *
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2014 Renesas Electronics Corporation
  *
  * gstv4l2object.c: base class for V4L2 elements
  *
@@ -46,6 +47,8 @@
 #include "gst/gst-i18n-plugin.h"
 
 #include <gst/video/video.h>
+
+#include "gstv4l2sink.h"
 
 /* videodev2.h is not versioned and we can't easily check for the presence
  * of enum values at compile time, but the V4L2_CAP_VIDEO_OUTPUT_OVERLAY define
@@ -1206,7 +1209,7 @@ format_cmp_func (gconstpointer a, gconstpointer b)
 static gboolean
 gst_v4l2_object_fill_format_list (GstV4l2Object * v4l2object)
 {
-  gint n;
+  gint n = 0;
   struct v4l2_fmtdesc *format;
 
   GST_DEBUG_OBJECT (v4l2object->element, "getting src format enumerations");
@@ -1223,7 +1226,12 @@ gst_v4l2_object_fill_format_list (GstV4l2Object * v4l2object)
         g_free (format);
         break;                  /* end of enumeration */
       } else {
-        goto failed;
+#ifdef RCARGEN2_ENUMFORMAT_HACK
+        if (GST_IS_V4L2SINK (v4l2object->element))
+          goto manual_set_format;
+        else
+#endif
+          goto failed;
       }
     }
 
@@ -1267,6 +1275,39 @@ failed:
     g_free (format);
     return FALSE;
   }
+
+#ifdef RCARGEN2_ENUMFORMAT_HACK
+  /* Hack for RCarGen2 platform, which do not support this ioctl */
+manual_set_format:
+
+  /* Set format manually here since the driver do not support ENUM_FMT */
+  n++;
+
+  /* Support NV12 (but need to convert to NV12M later) */
+  {
+    format = g_new0 (struct v4l2_fmtdesc, 1);
+
+    format->index = n;
+    format->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    format->flags = 0;
+    strcpy(format->description, "YUV 4:2:0(SP)");
+    format->pixelformat = V4L2_PIX_FMT_NV12;
+
+    GST_INFO_OBJECT (v4l2object->element, "index:       %u", format->index);
+    GST_INFO_OBJECT (v4l2object->element, "type:        %d", format->type);
+    GST_INFO_OBJECT (v4l2object->element, "flags:       %08x", format->flags);
+    GST_INFO_OBJECT (v4l2object->element, "description: '%s'",
+        format->description);
+    GST_INFO_OBJECT (v4l2object->element, "pixelformat: %" GST_FOURCC_FORMAT,
+        GST_FOURCC_ARGS (format->pixelformat));
+
+    v4l2object->formats = g_slist_insert_sorted (v4l2object->formats, format,
+        (GCompareFunc) format_cmp_func);
+  }
+
+  return TRUE;
+
+#endif
 }
 
 /*
@@ -2349,6 +2390,7 @@ gst_v4l2_object_set_format (GstV4l2Object * v4l2object, GstCaps * caps)
   struct v4l2_fmtdesc *fmtdesc;
   GstVideoInfo info;
   gint width, height, fps_n, fps_d, stride;
+  guint i;
 
   if (!gst_v4l2_object_get_caps_info (v4l2object, caps, &fmtdesc, &info))
     goto invalid_caps;
@@ -2371,10 +2413,6 @@ gst_v4l2_object_set_format (GstV4l2Object * v4l2object, GstCaps * caps)
     field = V4L2_FIELD_NONE;
   }
 
-  GST_DEBUG_OBJECT (v4l2object->element, "Desired format %dx%d, format "
-      "%" GST_FOURCC_FORMAT " stride: %d", width, height,
-      GST_FOURCC_ARGS (pixelformat), stride);
-
   GST_V4L2_CHECK_OPEN (v4l2object);
   GST_V4L2_CHECK_NOT_ACTIVE (v4l2object);
 
@@ -2395,48 +2433,135 @@ gst_v4l2_object_set_format (GstV4l2Object * v4l2object, GstCaps * caps)
   if (v4l2_ioctl (fd, VIDIOC_G_FMT, &format) < 0)
     goto get_fmt_failed;
 
-  GST_DEBUG_OBJECT (v4l2object->element, "Got format to %dx%d, format "
-      "%" GST_FOURCC_FORMAT " bytesperline %d, colorspace %d",
-      format.fmt.pix.width, format.fmt.pix.height,
-      GST_FOURCC_ARGS (format.fmt.pix.pixelformat), format.fmt.pix.bytesperline,
-      format.fmt.pix.colorspace);
-
-  if (format.type != v4l2object->type ||
-      format.fmt.pix.width != width ||
-      format.fmt.pix.height != height ||
-      format.fmt.pix.pixelformat != pixelformat ||
-      format.fmt.pix.field != field || format.fmt.pix.bytesperline != stride) {
-    /* something different, set the format */
-    GST_DEBUG_OBJECT (v4l2object->element, "Setting format to %dx%d, format "
-        "%" GST_FOURCC_FORMAT " bytesperline %d", width, height,
+  if(format.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+    GST_DEBUG_OBJECT (v4l2object->element, "Desired format %dx%d, format "
+        "%" GST_FOURCC_FORMAT " stride: %d", width, height,
         GST_FOURCC_ARGS (pixelformat), stride);
 
-    format.type = v4l2object->type;
-    format.fmt.pix.width = width;
-    format.fmt.pix.height = height;
-    format.fmt.pix.pixelformat = pixelformat;
-    format.fmt.pix.field = field;
-    /* try to ask our prefered stride */
-    format.fmt.pix.bytesperline = stride;
-
-    if (v4l2_ioctl (fd, VIDIOC_S_FMT, &format) < 0)
-      goto set_fmt_failed;
-
     GST_DEBUG_OBJECT (v4l2object->element, "Got format to %dx%d, format "
-        "%" GST_FOURCC_FORMAT " stride %d", format.fmt.pix.width,
-        format.fmt.pix.height, GST_FOURCC_ARGS (format.fmt.pix.pixelformat),
-        format.fmt.pix.bytesperline);
+        "%" GST_FOURCC_FORMAT " bytesperline %d, colorspace %d",
+        format.fmt.pix.width, format.fmt.pix.height,
+        GST_FOURCC_ARGS (format.fmt.pix.pixelformat),
+        format.fmt.pix.bytesperline,
+        format.fmt.pix.colorspace);
 
-    if (format.fmt.pix.width != width || format.fmt.pix.height != height)
-      goto invalid_dimensions;
+    if (format.type != v4l2object->type ||
+        format.fmt.pix.width != width ||
+        format.fmt.pix.height != height ||
+        format.fmt.pix.pixelformat != pixelformat ||
+        format.fmt.pix.field != field || format.fmt.pix.bytesperline != stride) {
 
-    if (format.fmt.pix.pixelformat != pixelformat)
-      goto invalid_pixelformat;
+      /* something different, set the format */
+      GST_DEBUG_OBJECT (v4l2object->element, "Setting format to %dx%d, format "
+          "%" GST_FOURCC_FORMAT " bytesperline %d", width, height,
+          GST_FOURCC_ARGS (pixelformat), stride);
+
+      format.type = v4l2object->type;
+      format.fmt.pix.width = width;
+      format.fmt.pix.height = height;
+      format.fmt.pix.pixelformat = pixelformat;
+      format.fmt.pix.field = field;
+      /* try to ask our prefered stride */
+      format.fmt.pix.bytesperline = stride;
+
+      if (v4l2_ioctl (fd, VIDIOC_S_FMT, &format) < 0)
+        goto set_fmt_failed;
+
+      GST_DEBUG_OBJECT (v4l2object->element, "Got format to %dx%d, format "
+          "%" GST_FOURCC_FORMAT " stride %d", format.fmt.pix.width,
+          format.fmt.pix.height, GST_FOURCC_ARGS (format.fmt.pix.pixelformat),
+          format.fmt.pix.bytesperline);
+
+      if (format.fmt.pix.width != width || format.fmt.pix.height != height)
+        goto invalid_dimensions;
+
+      if (format.fmt.pix.pixelformat != pixelformat)
+        goto invalid_pixelformat;
+    }
+  } else {
+
+    guint i;
+
+    /* In case the format type is OUTPUT_MPLANE, need to use
+     * a multi-plane format */
+    switch(pixelformat)
+    {
+      case V4L2_PIX_FMT_NV12:
+        pixelformat = V4L2_PIX_FMT_NV12M;
+        break;
+      case V4L2_PIX_FMT_NV21:
+        pixelformat = V4L2_PIX_FMT_NV21M;
+        break;
+      case V4L2_PIX_FMT_YVU420:
+      case V4L2_PIX_FMT_YUV420:
+        pixelformat = V4L2_PIX_FMT_YUV420M;
+        break;
+      default:
+        break;
+    }
+
+    GST_DEBUG_OBJECT (v4l2object->element, "Desired format %dx%d, format "
+        "%" GST_FOURCC_FORMAT " stride: %d", width, height,
+        GST_FOURCC_ARGS (pixelformat), stride);
+
+    GST_DEBUG_OBJECT (v4l2object->element, "Got format multiplane to %dx%d, format "
+        "%" GST_FOURCC_FORMAT " bytesperline %d, colorspace %d",
+        format.fmt.pix_mp.width, format.fmt.pix_mp.height,
+        GST_FOURCC_ARGS (format.fmt.pix_mp.pixelformat), format.fmt.pix_mp.plane_fmt[0].bytesperline,
+        format.fmt.pix_mp.colorspace);
+
+    if (format.type != v4l2object->type ||
+        format.fmt.pix_mp.width != width ||
+        format.fmt.pix_mp.height != height ||
+        format.fmt.pix_mp.pixelformat != pixelformat ||
+        format.fmt.pix_mp.field != field ||
+        format.fmt.pix_mp.plane_fmt[0].bytesperline != stride) {
+
+      format.type = v4l2object->type;
+      format.fmt.pix_mp.width = width;
+      format.fmt.pix_mp.height = height;
+      format.fmt.pix_mp.pixelformat = pixelformat;
+      format.fmt.pix_mp.field = field;
+
+      /* It is complex to calculate stride of each plane (must consider
+       * the format), so let the driver handle it */
+      for(i = 0; i < GST_VIDEO_MAX_PLANES; i++)
+        format.fmt.pix_mp.plane_fmt[i].bytesperline = 0;
+
+
+      if (v4l2_ioctl (fd, VIDIOC_S_FMT, &format) < 0)
+        goto set_fmt_failed;
+
+
+      GST_DEBUG_OBJECT (v4l2object->element, "Got format to %dx%d, format "
+          "%" GST_FOURCC_FORMAT, format.fmt.pix_mp.width,
+          format.fmt.pix_mp.height, GST_FOURCC_ARGS (format.fmt.pix_mp.pixelformat));
+
+      for (i = 0; i < GST_VIDEO_MAX_PLANES; i++) {
+        if (format.fmt.pix_mp.plane_fmt[i].bytesperline == 0)
+          break;
+        GST_DEBUG_OBJECT (v4l2object->element, "plane %d stride = %d", i, format.fmt.pix_mp.plane_fmt[i].bytesperline);
+      }
+
+      if (format.fmt.pix_mp.width != width || format.fmt.pix_mp.height != height)
+        goto invalid_dimensions;
+
+      if (format.fmt.pix_mp.pixelformat != pixelformat)
+        goto invalid_pixelformat;
+    }
   }
 
+
   /* figure out the frame layout */
-  v4l2object->bytesperline = format.fmt.pix.bytesperline;
-  v4l2object->sizeimage = format.fmt.pix.sizeimage;
+  if (format.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+    v4l2object->bytesperline[0] = format.fmt.pix.bytesperline;
+    v4l2object->sizeimage[0] = format.fmt.pix.sizeimage;
+  } else {
+    for (i=0; i < GST_VIDEO_MAX_PLANES; i++) {
+      v4l2object->bytesperline[i] = format.fmt.pix_mp.plane_fmt[i].bytesperline;
+      v4l2object->sizeimage[i] = format.fmt.pix_mp.plane_fmt[i].sizeimage;
+    }
+  }
 
   GST_DEBUG_OBJECT (v4l2object->element, "Got sizeimage %u",
       v4l2object->sizeimage);
@@ -2545,22 +2670,38 @@ set_fmt_failed:
   }
 invalid_dimensions:
   {
+    guint set_width, set_height;
+    if(format.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+      set_width = format.fmt.pix.width;
+      set_height = format.fmt.pix.height;
+    } else {
+      set_width = format.fmt.pix_mp.width;
+      set_height = format.fmt.pix_mp.height;
+    }
+
     GST_ELEMENT_ERROR (v4l2object->element, RESOURCE, SETTINGS,
         (_("Device '%s' cannot capture at %dx%d"),
             v4l2object->videodev, width, height),
         ("Tried to capture at %dx%d, but device returned size %dx%d",
-            width, height, format.fmt.pix.width, format.fmt.pix.height));
+            width, height, set_width, set_height));
+
     return FALSE;
   }
 invalid_pixelformat:
   {
+    guint32 set_pixelfmt;
+    if(format.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+      set_pixelfmt = format.fmt.pix.pixelformat;
+    else
+      set_pixelfmt = format.fmt.pix_mp.pixelformat;
+
     GST_ELEMENT_ERROR (v4l2object->element, RESOURCE, SETTINGS,
         (_("Device '%s' cannot capture in the specified format"),
             v4l2object->videodev),
         ("Tried to capture in %" GST_FOURCC_FORMAT
             ", but device returned format" " %" GST_FOURCC_FORMAT,
             GST_FOURCC_ARGS (pixelformat),
-            GST_FOURCC_ARGS (format.fmt.pix.pixelformat)));
+            GST_FOURCC_ARGS (set_pixelfmt)));
     return FALSE;
   }
 get_parm_failed:

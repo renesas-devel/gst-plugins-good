@@ -3,6 +3,7 @@
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
  *               2009 Texas Instruments, Inc - http://www.ti.com/
+ *               2014 Renesas Electronics Corporation
  *
  * gstv4l2bufferpool.h V4L2 buffer pool class
  *
@@ -78,7 +79,8 @@ struct _GstV4l2BufferPoolClass
 struct _GstV4l2Meta {
   GstMeta meta;
 
-  gpointer mem;
+  gpointer mem[GST_VIDEO_MAX_PLANES];
+  guint32  memsize[GST_VIDEO_MAX_PLANES];
   struct v4l2_buffer vbuffer;
 };
 

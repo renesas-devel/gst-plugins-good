@@ -3,6 +3,7 @@
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
  *               2009 Texas Instruments, Inc - http://www.ti.com/
+ *               2014 Renesas Electronics Corporation
  *
  * gstv4l2bufferpool.c V4L2 buffer pool class
  *
@@ -106,6 +107,10 @@ gst_v4l2_buffer_pool_free_buffer (GstBufferPool * bpool, GstBuffer * buffer)
 {
   GstV4l2BufferPool *pool = GST_V4L2_BUFFER_POOL (bpool);
   GstV4l2Object *obj;
+  guint i;
+  guint index;
+
+  index = pool->num_allocated;
 
   obj = pool->obj;
 
@@ -122,15 +127,39 @@ gst_v4l2_buffer_pool_free_buffer (GstBufferPool * bpool, GstBuffer * buffer)
       g_assert (meta != NULL);
 
       index = meta->vbuffer.index;
-      GST_LOG_OBJECT (pool,
-          "unmap buffer %p idx %d (data %p, len %u)", buffer,
-          index, meta->mem, meta->vbuffer.length);
 
-      v4l2_munmap (meta->mem, meta->vbuffer.length);
+
+      if (obj->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+        GST_LOG_OBJECT (pool,
+            "unmap buffer %p idx %d (data %p, len %u)", buffer,
+            index, meta->mem[0], meta->vbuffer.length);
+        v4l2_munmap (meta->mem[0], meta->vbuffer.length);
+      }
+      else
+        for (i=0; i<GST_VIDEO_MAX_PLANES; i++) {
+            GST_LOG_OBJECT (pool,
+                "unmap buffer %p idx %d (data %p, len %u)", buffer,
+                index, meta->mem[i], meta->memsize[i]);
+          if (meta->memsize[i] > 0)
+            v4l2_munmap (meta->mem[i], meta->memsize[i]);
+        }
+
       pool->buffers[index] = NULL;
       break;
     }
     case GST_V4L2_IO_USERPTR:
+    {
+      GstV4l2Meta *meta;
+      gint index;
+
+      meta = GST_V4L2_META_GET (buffer);
+      g_assert (meta != NULL);
+
+      index = meta->vbuffer.index;
+
+      pool->buffers[index] = NULL;
+      break;
+    }
     default:
       g_assert_not_reached ();
       break;
@@ -259,6 +288,9 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
   GstVideoInfo *info;
   guint index;
 
+  struct v4l2_plane planes[GST_VIDEO_MAX_PLANES];
+  guint i, planes_num, length, offset;
+
   obj = pool->obj;
   info = &obj->info;
 
@@ -312,29 +344,66 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
       meta->vbuffer.type = obj->type;
       meta->vbuffer.memory = V4L2_MEMORY_MMAP;
 
+      /* Additional config for multi-plane */
+      if (meta->vbuffer.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+        meta->vbuffer.length = GST_VIDEO_MAX_PLANES;
+        meta->vbuffer.m.planes = planes;
+      }
+
       if (v4l2_ioctl (pool->video_fd, VIDIOC_QUERYBUF, &meta->vbuffer) < 0)
         goto querybuf_failed;
 
       GST_LOG_OBJECT (pool, "  index:     %u", meta->vbuffer.index);
       GST_LOG_OBJECT (pool, "  type:      %d", meta->vbuffer.type);
-      GST_LOG_OBJECT (pool, "  bytesused: %u", meta->vbuffer.bytesused);
       GST_LOG_OBJECT (pool, "  flags:     %08x", meta->vbuffer.flags);
       GST_LOG_OBJECT (pool, "  field:     %d", meta->vbuffer.field);
       GST_LOG_OBJECT (pool, "  memory:    %d", meta->vbuffer.memory);
-      if (meta->vbuffer.memory == V4L2_MEMORY_MMAP)
+
+      if (meta->vbuffer.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+        GST_LOG_OBJECT (pool, "  bytesused: %u", meta->vbuffer.bytesused);
         GST_LOG_OBJECT (pool, "  MMAP offset:  %u", meta->vbuffer.m.offset);
+        GST_LOG_OBJECT (pool, "  length:    %u", meta->vbuffer.length);
+      } else {
+        for (i=0; i < GST_VIDEO_MAX_PLANES; i++) {
+          GST_LOG_OBJECT (pool, "  bytesused %d: %u", i, meta->vbuffer.m.planes[i].bytesused);
+          GST_LOG_OBJECT (pool, "  MMAP offset %d:  %u", i, meta->vbuffer.m.planes[i].m.mem_offset);
+          GST_LOG_OBJECT (pool, "  length %d:    %u", i, meta->vbuffer.m.planes[i].length);
+        }
+      }
 
       if (obj->mode == GST_V4L2_IO_MMAP) {
-        meta->mem = v4l2_mmap (0, meta->vbuffer.length,
-            PROT_READ | PROT_WRITE, MAP_SHARED, pool->video_fd,
-            meta->vbuffer.m.offset);
-        if (meta->mem == MAP_FAILED)
-          goto mmap_failed;
+        if (meta->vbuffer.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+          planes_num = 1;
+        else planes_num = GST_VIDEO_MAX_PLANES;
 
-        gst_buffer_append_memory (newbuf,
-            gst_memory_new_wrapped (GST_MEMORY_FLAG_NO_SHARE,
-                meta->mem, meta->vbuffer.length, 0, meta->vbuffer.length, NULL,
-                NULL));
+        for (i=0; i<planes_num; i++)
+        {
+          if (meta->vbuffer.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+            length = meta->vbuffer.length;
+            offset = meta->vbuffer.m.offset;
+          } else {
+            length = meta->vbuffer.m.planes[i].length;
+            offset = meta->vbuffer.m.planes[i].m.mem_offset;
+          }
+
+          /* Skip all zero-length planes */
+          if (length > 0) {
+            meta->mem[i] = v4l2_mmap (0, length,
+                PROT_READ | PROT_WRITE, MAP_SHARED, pool->video_fd,
+                offset);
+
+            if (meta->mem[i] == MAP_FAILED)
+              goto mmap_failed;
+            else {
+              gst_buffer_append_memory (newbuf,
+                gst_memory_new_wrapped (GST_MEMORY_FLAG_NO_SHARE,
+                meta->mem[i], length, 0, length,
+                NULL, NULL));
+
+              meta->memsize[i] = length;
+            }
+          }
+        }
       }
 #if HAVE_DECL_V4L2_MEMORY_DMABUF
       if (obj->mode == GST_V4L2_IO_DMABUF) {
@@ -363,11 +432,10 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
         height = GST_VIDEO_INFO_HEIGHT (info);
         n_planes = GST_VIDEO_INFO_N_PLANES (info);
 
-        GST_DEBUG_OBJECT (pool, "adding video meta, bytesperline %d",
-            obj->bytesperline);
-
         offs = 0;
         for (i = 0; i < n_planes; i++) {
+          GST_DEBUG_OBJECT (pool, "adding video meta, bytesperline %d",
+              obj->bytesperline[i]);
           offset[i] = offs;
 
           switch (info->finfo->format) {
@@ -377,12 +445,12 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
             case GST_VIDEO_FORMAT_NV24:
               stride[i] =
                   (i == 0 ? 1 : 2) * GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo,
-                  i, obj->bytesperline);
+                  i, obj->bytesperline[i]);
               break;
             default:
               stride[i] =
                   GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo, i,
-                  obj->bytesperline);
+                  obj->bytesperline[i]);
               break;
           }
 
@@ -468,6 +536,8 @@ gst_v4l2_buffer_pool_set_config (GstBufferPool * bpool, GstStructure * config)
   GstAllocator *allocator;
   GstAllocationParams params;
   struct v4l2_requestbuffers breq;
+  gint stride;
+  guint i, maxplanes;
 
   GST_DEBUG_OBJECT (pool, "set config");
 
@@ -477,17 +547,19 @@ gst_v4l2_buffer_pool_set_config (GstBufferPool * bpool, GstStructure * config)
 
   if (!pool->add_videometa &&
       GST_VIDEO_INFO_FORMAT (&obj->info) != GST_VIDEO_FORMAT_ENCODED) {
-    gint stride;
 
-    /* we don't have video metadata, and we are not dealing with raw video,
-     * see if the strides are compatible */
-    stride = GST_VIDEO_INFO_PLANE_STRIDE (&obj->info, 0);
+    maxplanes = GST_VIDEO_FORMAT_INFO_N_PLANES(obj->info.finfo);
+    for (i = 0; i < maxplanes; i++) {
+      /* we don't have video metadata, and we are not dealing with raw video,
+       * see if the strides are compatible */
+      stride = GST_VIDEO_INFO_PLANE_STRIDE (&obj->info, i);
 
-    GST_DEBUG_OBJECT (pool, "no videometadata, checking strides %d and %u",
-        stride, obj->bytesperline);
+      GST_DEBUG_OBJECT (pool, "no videometadata, checking strides %d and %u",
+          stride, obj->bytesperline[i]);
 
-    if (stride != obj->bytesperline)
-      goto missing_video_api;
+      if (stride != obj->bytesperline[i])
+        goto missing_video_api;
+    }
   }
 
   /* parse the config and keep around */
@@ -586,8 +658,8 @@ gst_v4l2_buffer_pool_set_config (GstBufferPool * bpool, GstStructure * config)
 missing_video_api:
   {
     GST_ERROR_OBJECT (pool, "missing GstMetaVideo API in config, "
-        "default stride: %d, wanted stride %u",
-        GST_VIDEO_INFO_PLANE_STRIDE (&obj->info, 0), obj->bytesperline);
+        "default stride: %d, result stride %u",
+        stride, obj->bytesperline[i]);
     return FALSE;
   }
 wrong_config:
@@ -791,14 +863,23 @@ gst_v4l2_buffer_pool_qbuf (GstV4l2BufferPool * pool, GstBuffer * buf)
 {
   GstV4l2Meta *meta;
   gint index;
+  guint i;
+
+  GstV4l2Object *obj;
+  struct v4l2_plane planes[GST_VIDEO_MAX_PLANES];
+
+  obj = pool->obj;
 
   meta = GST_V4L2_META_GET (buf);
   if (meta == NULL) {
-    GST_LOG_OBJECT (pool, "unref copied buffer %p", buf);
+    GST_LOG_OBJECT (pool, "unref copied buffer %p, size = %d\n", buf, gst_buffer_get_size(buf));
     /* no meta, it was a copied buffer that we can unref */
     gst_buffer_unref (buf);
     return GST_FLOW_OK;
   }
+
+  meta->vbuffer.m.planes = planes;
+  meta->vbuffer.length = GST_VIDEO_MAX_PLANES;
 
   index = meta->vbuffer.index;
   meta->vbuffer.bytesused = gst_buffer_get_size (buf);
@@ -843,6 +924,7 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool, GstBuffer ** buffer)
   GstV4l2Object *obj = pool->obj;
   GstClockTime timestamp;
   GstV4l2Meta *meta;
+  struct v4l2_plane planes[GST_VIDEO_MAX_PLANES];
 
   if ((res = gst_v4l2_object_poll (obj)) != GST_FLOW_OK)
     goto poll_error;
@@ -854,7 +936,9 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool, GstBuffer ** buffer)
     vbuffer.memory = V4L2_MEMORY_DMABUF;
   else
 #endif
-    vbuffer.memory = V4L2_MEMORY_MMAP;
+  vbuffer.memory = V4L2_MEMORY_MMAP;
+  vbuffer.m.planes = planes;
+  vbuffer.length = GST_VIDEO_MAX_PLANES;
 
   GST_LOG_OBJECT (pool, "doing DQBUF");
   if (v4l2_ioctl (pool->video_fd, VIDIOC_DQBUF, &vbuffer) < 0)
@@ -1036,6 +1120,7 @@ gst_v4l2_buffer_pool_acquire_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
       break;
 
     case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
       /* playback, This function should return an empty buffer */
       switch (obj->mode) {
         case GST_V4L2_IO_RW:
@@ -1063,6 +1148,7 @@ gst_v4l2_buffer_pool_acquire_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
       g_assert_not_reached ();
       break;
   }
+
 done:
   return ret;
 
@@ -1106,6 +1192,7 @@ gst_v4l2_buffer_pool_release_buffer (GstBufferPool * bpool, GstBuffer * buffer)
       break;
 
     case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
       switch (obj->mode) {
         case GST_V4L2_IO_RW:
           /* release back in the pool */
@@ -1127,7 +1214,9 @@ gst_v4l2_buffer_pool_release_buffer (GstBufferPool * bpool, GstBuffer * buffer)
                 index);
 
             /* reset to the full length, in case it was changed */
-            gst_buffer_resize (buffer, 0, meta->vbuffer.length);
+            /* DO NOT resize buffer in case using multiplane format */
+            if (obj->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+              gst_buffer_resize (buffer, 0, meta->vbuffer.length);
 
             /* playback, put the buffer back in the queue to refill later. */
             GST_BUFFER_POOL_CLASS (parent_class)->release_buffer (bpool,
@@ -1355,6 +1444,7 @@ gst_v4l2_buffer_pool_process (GstV4l2BufferPool * pool, GstBuffer * buf)
       break;
 
     case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
       /* playback */
       switch (obj->mode) {
         case GST_V4L2_IO_RW:

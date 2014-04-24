@@ -2,6 +2,7 @@
  *
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2014 Renesas Electronics Corporation
  *
  * gstv4l2object.h: base class for V4L2 elements
  *
@@ -118,8 +119,8 @@ struct _GstV4l2Object {
   struct v4l2_fmtdesc *fmtdesc;
   GstVideoInfo info;
 
-  guint32 bytesperline;
-  guint32 sizeimage;
+  guint32 bytesperline[GST_VIDEO_MAX_PLANES];
+  guint32 sizeimage[GST_VIDEO_MAX_PLANES];
   GstClockTime duration;
 
   /* wanted mode */
@@ -287,5 +288,7 @@ interface_as_function ## _property_probe_interface_init (GstPropertyProbeInterfa
 }
 
 G_END_DECLS
+
+#define RCARGEN2_ENUMFORMAT_HACK
 
 #endif /* __GST_V4L2_OBJECT_H__ */

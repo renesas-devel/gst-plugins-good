@@ -1,6 +1,7 @@
 /* GStreamer
  *
  * Copyright (C) 2009 Texas Instruments, Inc - http://www.ti.com/
+ *               2014 Renesas Electronics Corporation
  *
  * Description: V4L2 sink element
  *  Created on: Jul 2, 2009
@@ -106,7 +107,6 @@ gst_v4l2sink_navigation_init (GstNavigationInterface * iface)
 
 #define gst_v4l2sink_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE (GstV4l2Sink, gst_v4l2sink, GST_TYPE_VIDEO_SINK,
-    G_IMPLEMENT_INTERFACE (GST_TYPE_TUNER, gst_v4l2sink_tuner_interface_init);
 #ifdef HAVE_XVIDEO
     G_IMPLEMENT_INTERFACE (GST_TYPE_VIDEO_OVERLAY,
         gst_v4l2sink_video_overlay_interface_init);
@@ -197,8 +197,8 @@ gst_v4l2sink_class_init (GstV4l2SinkClass * klass)
           0, 0xffffffff, 0, G_PARAM_READWRITE));
 
   gst_element_class_set_static_metadata (element_class,
-      "Video (video4linux2) Sink", "Sink/Video",
-      "Displays frames on a video4linux2 device", "Rob Clark <rob@ti.com>,");
+      "Video (video4linux2 for R-Car) Sink", "Sink/Video",
+      "Displays frames on a video4linux2 device for R-Car", "Renesas Electronics,");
 
   gst_element_class_add_pad_template (element_class,
       gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
@@ -220,8 +220,9 @@ static void
 gst_v4l2sink_init (GstV4l2Sink * v4l2sink)
 {
   v4l2sink->v4l2object = gst_v4l2_object_new (GST_ELEMENT (v4l2sink),
-      V4L2_BUF_TYPE_VIDEO_OUTPUT, DEFAULT_PROP_DEVICE,
-      gst_v4l2_get_output, gst_v4l2_set_output, NULL);
+      V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, DEFAULT_PROP_DEVICE,
+      NULL, NULL, NULL);
+
 
   /* same default value for video output device as is used for
    * v4l2src/capture is no good..  so lets set a saner default
@@ -312,7 +313,7 @@ gst_v4l2sink_sync_crop_fields (GstV4l2Sink * v4l2sink)
     struct v4l2_crop crop;
 
     memset (&crop, 0x00, sizeof (struct v4l2_crop));
-    crop.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+    crop.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 
     if (v4l2_ioctl (fd, VIDIOC_G_CROP, &crop) < 0) {
       GST_WARNING_OBJECT (v4l2sink, "VIDIOC_G_CROP failed");
