@@ -487,6 +487,13 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
         }
       }
 
+      /* Do not need to allocate buffer in this mode. Buffer from
+       * upstream plugin will be used. However, need a dummy buffer
+       * here to prevent a critical error :
+       *      assertion `buffer != NULL' failed
+       * from base class */
+      newbuf = gst_buffer_new ();
+
       break;
     }
     default:
@@ -854,8 +861,8 @@ gst_v4l2_buffer_pool_stop (GstBufferPool * bpool)
   ret = GST_BUFFER_POOL_CLASS (parent_class)->stop (bpool);
 
   /* then free the remaining buffers */
-  /* don't free buffers in USERPTR as they belong to upstream plugin */
   if (obj->mode != GST_V4L2_IO_USERPTR)
+    /* In USERPTR mode, all buffers are already freed above */
     for (n = 0; n < pool->num_buffers; n++) {
       if (pool->buffers[n])
         gst_v4l2_buffer_pool_free_buffer (bpool, pool->buffers[n]);
@@ -1293,13 +1300,16 @@ gst_v4l2_buffer_pool_release_buffer (GstBufferPool * bpool, GstBuffer * buffer)
           break;
         }
 
+        case GST_V4L2_IO_USERPTR:
+        {
+            break;
+        }
         default:
           g_assert_not_reached ();
           break;
       }
       break;
 
-    case GST_V4L2_IO_USERPTR:
     default:
       g_assert_not_reached ();
       break;
