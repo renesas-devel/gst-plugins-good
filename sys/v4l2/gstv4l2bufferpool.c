@@ -331,7 +331,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
 
       /* Additional config for multi-plane */
       if (meta->vbuffer.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-        meta->vbuffer.length = GST_VIDEO_MAX_PLANES;
+        meta->vbuffer.length = GST_VIDEO_INFO_N_PLANES (info);
         meta->vbuffer.m.planes = planes;
       }
 
@@ -350,7 +350,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
           GST_LOG_OBJECT (pool, "  MMAP offset:  %u", meta->vbuffer.m.offset);
         GST_LOG_OBJECT (pool, "  length:    %u", meta->vbuffer.length);
       } else {
-        for (i=0; i < GST_VIDEO_MAX_PLANES; i++) {
+        for (i=0; i < GST_VIDEO_INFO_N_PLANES (info); i++) {
           GST_LOG_OBJECT (pool, "  bytesused %d: %u", i,
                 meta->vbuffer.m.planes[i].bytesused);
           if (obj->mode == GST_V4L2_IO_MMAP)
@@ -364,7 +364,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
       if (obj->mode == GST_V4L2_IO_MMAP) {
         if (meta->vbuffer.type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
           planes_num = 1;
-        else planes_num = GST_VIDEO_MAX_PLANES;
+        else planes_num = GST_VIDEO_INFO_N_PLANES (info);
 
         for (i=0; i<planes_num; i++)
         {
@@ -462,7 +462,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
 
       /* Additional config for multi-plane */
       if (vb.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-        vb.length = GST_VIDEO_MAX_PLANES;
+        vb.length = GST_VIDEO_INFO_N_PLANES (info);
         vb.m.planes = planes;
       }
 
@@ -479,7 +479,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
         GST_LOG_OBJECT (pool, "  bytesused: %u", vb.bytesused);
         GST_LOG_OBJECT (pool, "  length:    %u", vb.length);
       } else {
-        for (i=0; i < GST_VIDEO_MAX_PLANES; i++) {
+        for (i=0; i < GST_VIDEO_INFO_N_PLANES (info); i++) {
           GST_LOG_OBJECT (pool, "  bytesused %d: %u", i,
                 vb.m.planes[i].bytesused);
           GST_LOG_OBJECT (pool, "  length %d:    %u", i,
@@ -1007,7 +1007,7 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool, GstBuffer ** buffer)
 
   if (obj->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
     vbuffer.m.planes = planes;
-    vbuffer.length = GST_VIDEO_MAX_PLANES;
+    vbuffer.length = GST_VIDEO_INFO_N_PLANES (&obj->info);
   }
 
   GST_LOG_OBJECT (pool, "doing DQBUF");
