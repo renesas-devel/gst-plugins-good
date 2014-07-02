@@ -935,6 +935,7 @@ gst_v4l2_buffer_pool_qbuf (GstV4l2BufferPool * pool, GstBuffer * buf)
 {
   GstV4l2Meta *meta;
   gint index;
+  struct v4l2_plane planes[GST_VIDEO_MAX_PLANES];
 
   meta = GST_V4L2_META_GET (buf);
   if (meta == NULL) {
@@ -944,9 +945,10 @@ gst_v4l2_buffer_pool_qbuf (GstV4l2BufferPool * pool, GstBuffer * buf)
     return GST_FLOW_OK;
   }
 
-
   index = meta->vbuffer.index;
   meta->vbuffer.bytesused = gst_buffer_get_size (buf);
+  meta->vbuffer.m.planes = planes;
+  meta->vbuffer.length = GST_VIDEO_MAX_PLANES;
 
   GST_LOG_OBJECT (pool,
       "enqueue buffer %p, index:%d, queued:%d, flags:%08x mem:%p used:%d",
