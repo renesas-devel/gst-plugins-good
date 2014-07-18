@@ -138,6 +138,90 @@ gst_v4l2_buffer_pool_free_buffer (GstBufferPool * bpool, GstBuffer * buffer)
   gst_buffer_unref (buffer);
 }
 
+static GstBuffer *
+gst_v4l2_buffer_pool_request_videosink_buffer_creation (GstV4l2BufferPool *
+    pool)
+{
+  GstV4l2Object *obj;
+  struct v4l2_exportbuffer expbuf;
+  GstQuery *query;
+  GstStructure *structure;
+  GstVideoInfo *info;
+  const GstVideoFormatInfo *finfo;
+  struct v4l2_buffer vbuffer;
+  gint width, height;
+  gint stride;
+  GValue val = { 0, };
+  const GValue *value;
+  GstBuffer *buffer;
+  GstV4l2Meta *meta;
+
+  obj = pool->obj;
+  info = &obj->info;
+  finfo = info->finfo;
+
+  memset (&expbuf, 0, sizeof (struct v4l2_exportbuffer));
+  expbuf.type = obj->type;
+  expbuf.index = pool->num_allocated;
+  expbuf.flags = O_CLOEXEC;
+  if (v4l2_ioctl (pool->video_fd, VIDIOC_EXPBUF, &expbuf) < 0) {
+    GST_WARNING_OBJECT (pool, "Failed EXPBUF: %s", g_strerror (errno));
+    return NULL;
+  }
+
+  memset (&vbuffer, 0x0, sizeof (struct v4l2_buffer));
+  vbuffer.index = pool->num_allocated;
+  vbuffer.type = obj->type;
+  vbuffer.memory = V4L2_MEMORY_MMAP;
+  if (v4l2_ioctl (pool->video_fd, VIDIOC_QUERYBUF, &vbuffer) < 0) {
+    GST_WARNING_OBJECT (pool, "Failed QUERYBUF: %s", g_strerror (errno));
+    return NULL;
+  }
+
+  width = GST_VIDEO_INFO_WIDTH (info);
+  height = GST_VIDEO_INFO_HEIGHT (info);
+  stride = GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo, 0, obj->bytesperline);
+
+  g_value_init (&val, G_TYPE_POINTER);
+  g_value_set_pointer (&val, (gpointer) pool->allocator);
+
+  structure = gst_structure_new ("videosink_buffer_creation_request",
+      "width", G_TYPE_INT, width, "height", G_TYPE_INT, height,
+      "stride", G_TYPE_INT, stride, "dmabuf", G_TYPE_INT, expbuf.fd,
+      "allocator", G_TYPE_POINTER, &val,
+      "format", G_TYPE_STRING, gst_video_format_to_string (info->finfo->format),
+      NULL);
+
+  query = gst_query_new_custom (GST_QUERY_CUSTOM, structure);
+
+  GST_DEBUG_OBJECT (pool, "send a videosink_buffer_creation_request query");
+
+  if (!gst_pad_peer_query (GST_BASE_SRC_PAD (obj->element), query)) {
+    GST_WARNING_OBJECT (pool, "videosink_buffer_creation_request query failed");
+    return NULL;
+  }
+
+  value = gst_structure_get_value (structure, "buffer");
+  buffer = gst_value_get_buffer (value);
+  if (buffer == NULL) {
+    GST_WARNING_OBJECT (pool,
+        "could not get a buffer from videosink_buffer_creation query");
+    return NULL;
+  }
+
+  gst_query_unref (query);
+
+  buffer = gst_buffer_make_writable (buffer);
+
+  meta = GST_V4L2_META_ADD (buffer);
+
+  meta->vbuffer.index = pool->num_allocated;
+  meta->vbuffer.type = obj->type;
+  meta->vbuffer.memory = V4L2_MEMORY_MMAP;
+
+  return buffer;
+}
+
 static GstFlowReturn
 gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
     GstBufferPoolAcquireParams * params)
@@ -184,6 +268,12 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
         pool->buffers[pool->num_buffers - 1] = NULL;
       }
 #endif
+      if (obj->mode == GST_V4L2_IO_DMABUF) {
+        newbuf = gst_v4l2_buffer_pool_request_videosink_buffer_creation (pool);
+        if (newbuf)
+          goto skip;
+      }
+
       newbuf = gst_buffer_new ();
       meta = GST_V4L2_META_ADD (newbuf);
 
@@ -285,6 +375,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
       g_assert_not_reached ();
   }
 
+skip:
   pool->num_allocated++;
 
   *buffer = newbuf;
