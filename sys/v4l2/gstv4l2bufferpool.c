@@ -1102,7 +1102,7 @@ gst_v4l2_buffer_pool_new (GstV4l2Object * obj, GstCaps * caps)
   pool->can_alloc = TRUE;
 
   s = gst_buffer_pool_get_config (GST_BUFFER_POOL_CAST (pool));
-  gst_buffer_pool_config_set_params (s, caps, obj->sizeimage, 2, 0);
+  gst_buffer_pool_config_set_params (s, caps, obj->sizeimage, 2, 5);
   gst_buffer_pool_set_config (GST_BUFFER_POOL_CAST (pool), s);
 
   gst_object_ref (obj->element);
