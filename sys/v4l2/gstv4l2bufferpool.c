@@ -592,7 +592,7 @@ gst_v4l2_buffer_pool_set_config (GstBufferPool * bpool, GstStructure * config)
       GST_DEBUG_OBJECT (pool, "no videometadata, checking strides %d and %u",
           stride, obj->bytesperline[i]);
 
-      if (stride != obj->bytesperline[i])
+      if (stride != obj->bytesperline[i] && GST_VIDEO_INFO_N_PLANES(&obj->info) == 0)  /*Workaround for NV16 wrong byteperline*/
         goto missing_video_api;
     }
   }
@@ -1052,10 +1052,11 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool, GstBuffer ** buffer)
    * no share, so if it's not there, it's not used at all.
    */
   if (obj->type == V4L2_BUF_TYPE_VIDEO_CAPTURE && vbuffer.length != pool->size) {
+    
     gst_buffer_remove_all_memory (outbuf);
     gst_buffer_append_memory (outbuf,
         gst_memory_new_wrapped (GST_MEMORY_FLAG_NO_SHARE,
-            meta->mem, vbuffer.length, 0, vbuffer.bytesused, NULL, NULL));
+            meta->mem[0], vbuffer.length, 0, vbuffer.bytesused, NULL, NULL));
   }
 
   GST_BUFFER_TIMESTAMP (outbuf) = timestamp;

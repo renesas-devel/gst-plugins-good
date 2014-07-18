@@ -83,6 +83,8 @@ enum
   LAST_SIGNAL
 };
 
+static GstVideoFormat vin_format;         /*Check format in cap*/
+
 static guint gst_v4l2_signals[LAST_SIGNAL] = { 0 };
 
 GST_IMPLEMENT_V4L2_COLOR_BALANCE_METHODS (GstV4l2Src, gst_v4l2src);
@@ -439,9 +441,14 @@ gst_v4l2src_set_caps (GstBaseSrc * src, GstCaps * caps)
 {
   GstV4l2Src *v4l2src;
   GstV4l2Object *obj;
+  GstVideoInfo info;
 
   v4l2src = GST_V4L2SRC (src);
   obj = v4l2src->v4l2object;
+
+  /*Get format of cap to check in gst_v4l2src_decide_allocation function*/
+  gst_video_info_from_caps (&info, caps);
+  vin_format = GST_VIDEO_INFO_FORMAT (&info);
 
   /* make sure the caps changed before doing anything */
   if (gst_v4l2_object_caps_equal (obj, caps))
@@ -552,11 +559,17 @@ gst_v4l2src_decide_allocation (GstBaseSrc * bsrc, GstQuery * query)
     gst_buffer_pool_config_get_params (config, &caps, NULL, NULL, NULL);
     gst_buffer_pool_config_set_params (config, caps, size, min, max);
 
-    /* if downstream supports video metadata, add this to the pool config */
-    if (gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL)) {
-      GST_DEBUG_OBJECT (pool, "activate Video Meta");
-      gst_buffer_pool_config_add_option (config,
-          GST_BUFFER_POOL_OPTION_VIDEO_META);
+    /*Check format of cap*/
+    if(vin_format == GST_VIDEO_FORMAT_NV16) {
+        /* support various metadata (neccesary when connect with videoconvert) */
+        gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+    } else {
+        /* if downstream supports video metadata, add this to the pool config */
+        if (gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL)) {
+           GST_DEBUG_OBJECT (pool, "activate Video Meta");
+           gst_buffer_pool_config_add_option (config,
+                     GST_BUFFER_POOL_OPTION_VIDEO_META);
+        }
     }
 
     gst_buffer_pool_set_config (pool, config);

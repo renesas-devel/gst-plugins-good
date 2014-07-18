@@ -2229,7 +2229,7 @@ gst_v4l2_object_get_nearest_size (GstV4l2Object * v4l2object,
   fmt.fmt.pix.width = *width;
   fmt.fmt.pix.height = *height;
   fmt.fmt.pix.pixelformat = pixelformat;
-  fmt.fmt.pix.field = V4L2_FIELD_NONE;
+  fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
   r = v4l2_ioctl (fd, VIDIOC_TRY_FMT, &fmt);
   if (r < 0 && errno == EINVAL) {
@@ -2237,7 +2237,7 @@ gst_v4l2_object_get_nearest_size (GstV4l2Object * v4l2object,
     fmt.fmt.pix.width = *width;
     fmt.fmt.pix.height = *height;
     fmt.fmt.pix.pixelformat = pixelformat;
-    fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+    fmt.fmt.pix.field = V4L2_FIELD_NONE;
     r = v4l2_ioctl (fd, VIDIOC_TRY_FMT, &fmt);
   }
 
