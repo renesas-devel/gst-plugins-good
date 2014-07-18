@@ -778,7 +778,7 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool, GstBuffer ** buffer)
    * element, so just put back the original one. We always set it as
    * no share, so if it's not there, it's not used at all.
    */
-  if (obj->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+  if (obj->type == V4L2_BUF_TYPE_VIDEO_CAPTURE && vbuffer.length != pool->size) {
     gst_buffer_remove_all_memory (outbuf);
     gst_buffer_append_memory (outbuf,
         gst_memory_new_wrapped (GST_MEMORY_FLAG_NO_SHARE,
