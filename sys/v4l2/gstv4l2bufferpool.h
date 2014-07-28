@@ -83,6 +83,8 @@ struct _GstV4l2Meta {
   gpointer mem[GST_VIDEO_MAX_PLANES];
   guint32  memsize[GST_VIDEO_MAX_PLANES];
   struct v4l2_buffer vbuffer;
+
+  GstBuffer * ori_buf; /* Buffer send from upstream plugin */
 };
 
 GType gst_v4l2_meta_api_get_type (void);

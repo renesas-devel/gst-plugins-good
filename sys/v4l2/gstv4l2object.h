@@ -73,11 +73,12 @@ G_BEGIN_DECLS
 #define GST_V4L2_OBJECT(obj) (GstV4l2Object *)(obj)
 
 typedef enum {
-  GST_V4L2_IO_AUTO    = 0,
-  GST_V4L2_IO_RW      = 1,
-  GST_V4L2_IO_MMAP    = 2,
-  GST_V4L2_IO_USERPTR = 3,
-  GST_V4L2_IO_DMABUF  = 4
+  GST_V4L2_IO_AUTO           = 0,
+  GST_V4L2_IO_RW             = 1,
+  GST_V4L2_IO_MMAP           = 2,
+  GST_V4L2_IO_USERPTR        = 3,
+  GST_V4L2_IO_DMABUF         = 4,
+  GST_V4L2_IO_DMABUF_IMPORT  = 5
 } GstV4l2IOMode;
 
 typedef gboolean  (*GstV4l2GetInOutFunction)  (GstV4l2Object * v4l2object, gint * input);
