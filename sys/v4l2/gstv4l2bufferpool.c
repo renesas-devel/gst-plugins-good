@@ -595,7 +595,11 @@ gst_v4l2_buffer_pool_set_config (GstBufferPool * bpool, GstStructure * config)
       (obj->mode != GST_V4L2_IO_USERPTR) &&
       (obj->mode != GST_V4L2_IO_DMABUF_IMPORT)) {
 
-    maxplanes = GST_VIDEO_FORMAT_INFO_N_PLANES(obj->info.finfo);
+    if (V4L2_TYPE_IS_MULTIPLANAR(obj->type))
+      maxplanes = GST_VIDEO_FORMAT_INFO_N_PLANES(obj->info.finfo);
+    else
+      maxplanes = 1;
+
     for (i = 0; i < maxplanes; i++) {
       /* we don't have video metadata, and we are not dealing with raw video,
        * see if the strides are compatible */
@@ -604,7 +608,7 @@ gst_v4l2_buffer_pool_set_config (GstBufferPool * bpool, GstStructure * config)
       GST_DEBUG_OBJECT (pool, "no videometadata, checking strides %d and %u",
           stride, obj->bytesperline[i]);
 
-      if (stride != obj->bytesperline[i] && GST_VIDEO_INFO_N_PLANES(&obj->info) == 0)  /*Workaround for NV16 wrong byteperline*/
+      if (stride != obj->bytesperline[i])
         goto missing_video_api;
     }
   }
