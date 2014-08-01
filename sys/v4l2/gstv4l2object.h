@@ -164,6 +164,8 @@ struct _GstV4l2Object {
   GstV4l2GetInOutFunction  get_in_out_func;
   GstV4l2SetInOutFunction  set_in_out_func;
   GstV4l2UpdateFpsFunction update_fps_func;
+  /*Support Crop for v4l2src*/
+  struct v4l2_rect crop;
 };
 
 struct _GstV4l2ObjectClassHelper {

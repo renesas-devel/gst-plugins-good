@@ -2393,6 +2393,7 @@ gst_v4l2_object_set_format (GstV4l2Object * v4l2object, GstCaps * caps)
   GstVideoInfo info;
   gint width, height, fps_n, fps_d, stride;
   guint i;
+  struct v4l2_crop crop;
 
   if (!gst_v4l2_object_get_caps_info (v4l2object, caps, &fmtdesc, &info))
     goto invalid_caps;
@@ -2447,6 +2448,33 @@ gst_v4l2_object_set_format (GstV4l2Object * v4l2object, GstCaps * caps)
         format.fmt.pix.bytesperline,
         format.fmt.pix.colorspace);
 
+    /*Set clip area */
+    if (v4l2object->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+      crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+      if (v4l2object->crop.top !=0 || v4l2object->crop.left !=0 ||
+          v4l2object->crop.width != 0 ||
+          v4l2object->crop.height != 0) {
+
+        crop.c.top = v4l2object->crop.top;
+        crop.c.left = v4l2object->crop.left;
+        if (v4l2object->crop.width == 0)
+          crop.c.width = width;
+        else
+          crop.c.width = v4l2object->crop.width;
+        if (v4l2object->crop.height == 0)
+          crop.c.height = height;
+        else
+          crop.c.height = v4l2object->crop.height;
+      } else {
+        crop.c.top = 0;
+        crop.c.left = 0;
+        crop.c.width = width;
+        crop.c.height = height;
+      }
+      if (-1 == v4l2_ioctl (fd, VIDIOC_S_CROP, &crop))
+        GST_WARNING_OBJECT (v4l2object->element, "Failed to set crop to %dx%d", width, height);
+    }
+
     if (format.type != v4l2object->type ||
         format.fmt.pix.width != width ||
         format.fmt.pix.height != height ||
@@ -2473,6 +2501,33 @@ gst_v4l2_object_set_format (GstV4l2Object * v4l2object, GstCaps * caps)
           "%" GST_FOURCC_FORMAT " stride %d", format.fmt.pix.width,
           format.fmt.pix.height, GST_FOURCC_ARGS (format.fmt.pix.pixelformat),
           format.fmt.pix.bytesperline);
+
+      /*Reset clip area when field or format change*/
+      if (v4l2object->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+        crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        if (v4l2object->crop.top != 0 || v4l2object->crop.left != 0 ||
+            v4l2object->crop.width != 0 ||
+            v4l2object->crop.height != 0) {
+
+          crop.c.top = v4l2object->crop.top;
+          crop.c.left = v4l2object->crop.left;
+          if (v4l2object->crop.width == 0)
+            crop.c.width = width;
+          else
+            crop.c.width = v4l2object->crop.width;
+          if (v4l2object->crop.height == 0)
+            crop.c.height = height;
+          else
+            crop.c.height = v4l2object->crop.height;
+        } else {
+          crop.c.top = 0;
+          crop.c.left = 0;
+          crop.c.width = width;
+          crop.c.height = height;
+        }
+        if (-1 == v4l2_ioctl (fd, VIDIOC_S_CROP, &crop))
+          GST_WARNING_OBJECT (v4l2object->element, "Failed to set crop to %dx%d", width, height);
+      }
 
       if (format.fmt.pix.width != width || format.fmt.pix.height != height)
         goto invalid_dimensions;

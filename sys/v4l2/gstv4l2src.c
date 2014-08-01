@@ -73,7 +73,11 @@ enum
 {
   PROP_0,
   V4L2_STD_OBJECT_PROPS,
-  PROP_LAST
+  PROP_LAST,
+  PROP_CROP_TOP,
+  PROP_CROP_LEFT,
+  PROP_CROP_WIDTH,
+  PROP_CROP_HEIGHT,
 };
 
 /* signals and args */
@@ -157,6 +161,22 @@ gst_v4l2src_class_init (GstV4l2SrcClass * klass)
 
   gst_v4l2_object_install_properties_helper (gobject_class,
       DEFAULT_PROP_DEVICE);
+  g_object_class_install_property (gobject_class, PROP_CROP_TOP,
+      g_param_spec_int ("crop-top", "Crop top",
+          "The topmost (y) coordinate of the video crop, it must be even number",
+          0, 2048, 0, G_PARAM_READWRITE));
+  g_object_class_install_property (gobject_class, PROP_CROP_LEFT,
+      g_param_spec_int ("crop-left", "Crop left",
+          "The leftmost (x) coordinate of the video crop, it must be even number",
+          0, 2048 , 0, G_PARAM_READWRITE));
+  g_object_class_install_property (gobject_class, PROP_CROP_WIDTH,
+      g_param_spec_uint ("crop-width", "Crop width",
+          "The width of the video crop, it must be even number",
+          6, 2048, 6, G_PARAM_READWRITE));
+  g_object_class_install_property (gobject_class, PROP_CROP_HEIGHT,
+      g_param_spec_uint ("crop-height", "Crop height",
+          "The height of the video crop, it must be even number",
+          2, 2048, 2, G_PARAM_READWRITE));
 
   /**
    * GstV4l2Src::prepare-format:
@@ -238,6 +258,18 @@ gst_v4l2src_set_property (GObject * object,
   if (!gst_v4l2_object_set_property_helper (v4l2src->v4l2object,
           prop_id, value, pspec)) {
     switch (prop_id) {
+      case PROP_CROP_TOP:
+        v4l2src->v4l2object->crop.top = g_value_get_int (value);
+        break;
+      case PROP_CROP_LEFT:
+        v4l2src->v4l2object->crop.left = g_value_get_int (value);
+        break;
+      case PROP_CROP_WIDTH:
+        v4l2src->v4l2object->crop.width = g_value_get_uint (value);
+        break;
+      case PROP_CROP_HEIGHT:
+        v4l2src->v4l2object->crop.height = g_value_get_uint (value);
+        break;
       default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
         break;
@@ -254,6 +286,18 @@ gst_v4l2src_get_property (GObject * object,
   if (!gst_v4l2_object_get_property_helper (v4l2src->v4l2object,
           prop_id, value, pspec)) {
     switch (prop_id) {
+      case PROP_CROP_TOP:
+        g_value_set_int (value, v4l2src->v4l2object->crop.top);
+        break;
+      case PROP_CROP_LEFT:
+        g_value_set_int (value, v4l2src->v4l2object->crop.left);
+        break;
+      case PROP_CROP_WIDTH:
+        g_value_set_uint (value, v4l2src->v4l2object->crop.width);
+        break;
+      case PROP_CROP_HEIGHT:
+        g_value_set_uint (value, v4l2src->v4l2object->crop.height);
+        break;
       default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
         break;
