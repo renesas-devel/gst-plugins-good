@@ -1191,6 +1191,7 @@ gst_v4l2_buffer_pool_new (GstV4l2Object * obj, GstCaps * caps)
   pool->video_fd = fd;
   pool->obj = obj;
   pool->can_alloc = TRUE;
+  pool->vsink_buf_req_supported = FALSE;
 
   s = gst_buffer_pool_get_config (GST_BUFFER_POOL_CAST (pool));
   gst_buffer_pool_config_set_params (s, caps, obj->sizeimage, 2, 5);

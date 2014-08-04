@@ -494,6 +494,15 @@ gst_v4l2src_decide_allocation (GstBaseSrc * bsrc, GstQuery * query)
     min = 2;
   }
 
+  if (pool) {
+    GstStructure *config;
+
+    config = gst_buffer_pool_get_config (pool);
+    gst_structure_get_boolean (config,
+        "videosink_buffer_creation_request_supported",
+        &GST_V4L2_BUFFER_POOL (obj->pool)->vsink_buf_req_supported);
+  }
+
   /* select a pool */
   switch (obj->mode) {
     case GST_V4L2_IO_RW:
