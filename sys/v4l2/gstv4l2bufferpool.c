@@ -268,7 +268,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
         pool->buffers[pool->num_buffers - 1] = NULL;
       }
 #endif
-      if (obj->mode == GST_V4L2_IO_DMABUF) {
+      if (obj->mode == GST_V4L2_IO_DMABUF && pool->vsink_buf_req_supported) {
         newbuf = gst_v4l2_buffer_pool_request_videosink_buffer_creation (pool);
         if (newbuf)
           goto skip;
