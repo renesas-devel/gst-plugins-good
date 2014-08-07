@@ -147,27 +147,51 @@ gst_v4l2_buffer_pool_request_videosink_buffer_creation (GstV4l2BufferPool *
   GstQuery *query;
   GstStructure *structure;
   GstVideoInfo *info;
-  const GstVideoFormatInfo *finfo;
   struct v4l2_buffer vbuffer;
   gint width, height;
-  gint stride;
   GValue val = { 0, };
   const GValue *value;
   GstBuffer *buffer;
   GstV4l2Meta *meta;
+  struct v4l2_format format;
+  gint n_planes;
+  GArray *dmabuf_fd;
+  GArray *stride;
+  gint i;
 
   obj = pool->obj;
   info = &obj->info;
-  finfo = info->finfo;
 
-  memset (&expbuf, 0, sizeof (struct v4l2_exportbuffer));
-  expbuf.type = obj->type;
-  expbuf.index = pool->num_allocated;
-  expbuf.flags = O_CLOEXEC;
-  if (v4l2_ioctl (pool->video_fd, VIDIOC_EXPBUF, &expbuf) < 0) {
-    GST_WARNING_OBJECT (pool, "Failed EXPBUF: %s", g_strerror (errno));
+  memset (&format, 0, sizeof (struct v4l2_format));
+  format.type = obj->type;
+  if (v4l2_ioctl (pool->video_fd, VIDIOC_G_FMT, &format) < 0) {
+    GST_WARNING_OBJECT (pool, "Failed VIDIOC_G_FMT: %s", g_strerror (errno));
     return NULL;
   }
+
+  dmabuf_fd = g_array_new (FALSE, FALSE, sizeof (gint));
+  stride = g_array_new (FALSE, FALSE, sizeof (gint));
+
+  n_planes = GST_VIDEO_INFO_N_PLANES (info);
+  for (i = 0; i < n_planes; i++) {
+    memset (&expbuf, 0, sizeof (struct v4l2_exportbuffer));
+    expbuf.type = obj->type;
+    expbuf.index = pool->num_allocated;
+    expbuf.plane = i;
+    expbuf.flags = O_CLOEXEC;
+    if (v4l2_ioctl (pool->video_fd, VIDIOC_EXPBUF, &expbuf) < 0) {
+      GST_WARNING_OBJECT (pool, "Failed EXPBUF: %s", g_strerror (errno));
+      return NULL;
+    }
+
+    g_array_append_val (dmabuf_fd, expbuf.fd);
+  }
+
+  if (n_planes == 1)
+    g_array_append_val (stride, format.fmt.pix.bytesperline);
+  else
+    for (i = 0; i < n_planes; i++)
+      g_array_append_val (stride, format.fmt.pix_mp.plane_fmt[i].bytesperline);
 
   memset (&vbuffer, 0x0, sizeof (struct v4l2_buffer));
   vbuffer.index = pool->num_allocated;
@@ -180,15 +204,14 @@ gst_v4l2_buffer_pool_request_videosink_buffer_creation (GstV4l2BufferPool *
 
   width = GST_VIDEO_INFO_WIDTH (info);
   height = GST_VIDEO_INFO_HEIGHT (info);
-  stride = GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (finfo, 0, obj->bytesperline);
 
   g_value_init (&val, G_TYPE_POINTER);
   g_value_set_pointer (&val, (gpointer) pool->allocator);
 
   structure = gst_structure_new ("videosink_buffer_creation_request",
       "width", G_TYPE_INT, width, "height", G_TYPE_INT, height,
-      "stride", G_TYPE_INT, stride, "dmabuf", G_TYPE_INT, expbuf.fd,
-      "allocator", G_TYPE_POINTER, &val,
+      "stride", G_TYPE_ARRAY, stride, "dmabuf", G_TYPE_ARRAY, dmabuf_fd,
+      "n_planes", G_TYPE_INT, n_planes, "allocator", G_TYPE_POINTER, &val,
       "format", G_TYPE_STRING, gst_video_format_to_string (info->finfo->format),
       NULL);
 
@@ -210,6 +233,9 @@ gst_v4l2_buffer_pool_request_videosink_buffer_creation (GstV4l2BufferPool *
   }
 
   gst_query_unref (query);
+
+  g_array_free (dmabuf_fd, TRUE);
+  g_array_free (stride, TRUE);
 
   buffer = gst_buffer_make_writable (buffer);
 
