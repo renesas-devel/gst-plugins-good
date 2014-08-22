@@ -486,14 +486,6 @@ gst_v4l2src_decide_allocation (GstBaseSrc * bsrc, GstQuery * query)
   GST_DEBUG_OBJECT (src, "allocation: size:%u min:%u max:%u pool:%"
       GST_PTR_FORMAT, size, min, max, pool);
 
-  if (min != 0) {
-    /* if there is a min-buffers suggestion, use it. We add 1 because we need 1
-     * buffer extra to capture while the other two buffers are downstream */
-    min += 1;
-  } else {
-    min = 2;
-  }
-
   if (pool) {
     GstStructure *config;
 
@@ -535,6 +527,21 @@ gst_v4l2src_decide_allocation (GstBaseSrc * bsrc, GstQuery * query)
     default:
       GST_WARNING_OBJECT (src, "unhandled mode");
       break;
+  }
+
+  if (pool == GST_BUFFER_POOL_CAST (obj->pool))
+    /* When using our own pool, the number of buffers should be determined
+       by this plugin. This is the minimum required number of the buffers for
+       the contiguous capturing mode. */
+    min = max = 5;
+  else {
+    if (min != 0) {
+      /* if there is a min-buffers suggestion, use it. We add 1 because we need 1
+       * buffer extra to capture while the other two buffers are downstream */
+      min += 1;
+    } else {
+      min = 2;
+    }
   }
 
   if (pool) {
