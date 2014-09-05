@@ -49,6 +49,7 @@
 #include <gst/video/video.h>
 
 #include "gstv4l2sink.h"
+#include "gstv4l2src.h"
 
 /* videodev2.h is not versioned and we can't easily check for the presence
  * of enum values at compile time, but the V4L2_CAP_VIDEO_OUTPUT_OVERLAY define
@@ -1927,9 +1928,11 @@ return_data:
   gst_structure_set (s, "width", G_TYPE_INT, (gint) width,
       "height", G_TYPE_INT, (gint) height, NULL);
   gst_v4l2_object_add_aspect_ratio (v4l2object, s);
-  if (g_str_equal (gst_structure_get_name (s), "video/x-raw"))
-    gst_structure_set (s, "interlace-mode", G_TYPE_STRING,
-        (interlaced ? "mixed" : "progressive"), NULL);
+  /*v4l2src need checking interlace-mode, v4l2sink can skip checking*/
+  if (GST_IS_V4L2SRC(v4l2object->element))
+    if (g_str_equal (gst_structure_get_name (s), "video/x-raw"))
+      gst_structure_set (s, "interlace-mode", G_TYPE_STRING,
+          (interlaced ? "mixed" : "progressive"), NULL);
 
   if (G_IS_VALUE (&rates)) {
     /* only change the framerate on the template when we have a valid probed new
@@ -2188,10 +2191,11 @@ default_frame_sizes:
       gst_structure_set (tmp, "height", G_TYPE_INT, max_h, NULL);
     else
       gst_structure_set (tmp, "height", GST_TYPE_INT_RANGE, min_h, max_h, NULL);
-
-    if (g_str_equal (gst_structure_get_name (tmp), "video/x-raw"))
-      gst_structure_set (tmp, "interlace-mode", G_TYPE_STRING,
-          (interlaced ? "mixed" : "progressive"), NULL);
+    /*v4l2src need checking interlace-mode, v4l2sink can skip checking*/
+    if (GST_IS_V4L2SRC(v4l2object->element))
+      if (g_str_equal (gst_structure_get_name (tmp), "video/x-raw"))
+        gst_structure_set (tmp, "interlace-mode", G_TYPE_STRING,
+            (interlaced ? "mixed" : "progressive"), NULL);
     gst_v4l2_object_add_aspect_ratio (v4l2object, tmp);
 
     gst_caps_append_structure (ret, tmp);
