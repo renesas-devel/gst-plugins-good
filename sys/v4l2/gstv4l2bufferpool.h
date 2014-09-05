@@ -65,7 +65,6 @@ struct _GstV4l2BufferPool
   gboolean streaming;
 
   GstBuffer **buffers;
-  GstVideoFrame **frames;     /* Use in USERPTR mode */
 
   /* TRUE if the downstream buffer pool can handle
      "videosink_buffer_creation_request" query */
