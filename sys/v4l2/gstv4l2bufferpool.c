@@ -321,6 +321,7 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
       }
 #endif
       if (obj->mode == GST_V4L2_IO_DMABUF && pool->vsink_buf_req_supported) {
+        /*Downstreams has support creating request buffer*/
         newbuf = gst_v4l2_buffer_pool_request_videosink_buffer_creation (pool);
         if (newbuf)
           goto skip;
@@ -425,7 +426,6 @@ gst_v4l2_buffer_pool_alloc_buffer (GstBufferPool * bpool, GstBuffer ** buffer,
         if (v4l2_ioctl (pool->video_fd, VIDIOC_EXPBUF, &expbuf) < 0)
           goto expbuf_failed;
 
-        meta->vbuffer.memory = V4L2_MEMORY_DMABUF;
         gst_buffer_append_memory (newbuf,
             gst_dmabuf_allocator_alloc (pool->allocator, expbuf.fd,
                 meta->vbuffer.length));
@@ -1033,11 +1033,12 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool, GstBuffer ** buffer)
    * no share, so if it's not there, it's not used at all.
    */
   if (obj->type == V4L2_BUF_TYPE_VIDEO_CAPTURE && vbuffer.length != pool->size) {
-    
-    gst_buffer_remove_all_memory (outbuf);
-    gst_buffer_append_memory (outbuf,
-        gst_memory_new_wrapped (GST_MEMORY_FLAG_NO_SHARE,
-            meta->mem[0], vbuffer.length, 0, vbuffer.bytesused, NULL, NULL));
+    if (obj->mode == GST_V4L2_IO_MMAP) {
+      gst_buffer_remove_all_memory (outbuf);
+      gst_buffer_append_memory (outbuf,
+          gst_memory_new_wrapped (GST_MEMORY_FLAG_NO_SHARE,
+              meta->mem[0], vbuffer.length, 0, vbuffer.bytesused, NULL, NULL));
+    }
   }
 
   GST_BUFFER_TIMESTAMP (outbuf) = timestamp;
@@ -1481,6 +1482,7 @@ gst_v4l2_buffer_pool_process (GstV4l2BufferPool * pool, GstBuffer * buf)
           ret = gst_v4l2_do_read (pool, buf);
           break;
 
+        case GST_V4L2_IO_DMABUF:
         case GST_V4L2_IO_MMAP:
         {
           GstBuffer *tmp;
