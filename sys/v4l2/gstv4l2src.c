@@ -2,6 +2,7 @@
  *
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
+ *               2014 Renesas Electronics Corporation
  *
  * gstv4l2src.c: Video4Linux2 source element
  *
