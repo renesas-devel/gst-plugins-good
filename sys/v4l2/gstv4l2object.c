@@ -1308,6 +1308,28 @@ manual_set_format:
         (GCompareFunc) format_cmp_func);
   }
 
+/* Support UYVY*/
+   n++;
+  {
+    format = g_new0 (struct v4l2_fmtdesc, 1);
+
+    format->index = n;
+    format->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    format->flags = 0;
+    strcpy(format->description, "YUV 4:2:2");
+    format->pixelformat = V4L2_PIX_FMT_UYVY;
+
+    GST_INFO_OBJECT (v4l2object->element, "index:       %u", format->index);
+    GST_INFO_OBJECT (v4l2object->element, "type:        %d", format->type);
+    GST_INFO_OBJECT (v4l2object->element, "flags:       %08x", format->flags);
+    GST_INFO_OBJECT (v4l2object->element, "description: '%s'",
+        format->description);
+    GST_INFO_OBJECT (v4l2object->element, "pixelformat: %" GST_FOURCC_FORMAT,
+        GST_FOURCC_ARGS (format->pixelformat));
+
+    v4l2object->formats = g_slist_insert_sorted (v4l2object->formats, format,
+        (GCompareFunc) format_cmp_func);
+  }
   return TRUE;
 
 #endif
