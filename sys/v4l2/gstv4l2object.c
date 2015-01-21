@@ -2872,6 +2872,12 @@ gst_v4l2_object_stop (GstV4l2Object * v4l2object)
 
   if (v4l2object->pool) {
     GST_DEBUG_OBJECT (v4l2object->element, "deactivating pool");
+
+    /* Should release all buffers before de-active v4l2sink bufferpool, or else
+     * bufferpool may not be closed */
+    if (GST_IS_V4L2SINK (v4l2object->element))
+      gst_v4l2_buffer_pool_flush (v4l2object->pool);
+
     gst_buffer_pool_set_active (GST_BUFFER_POOL_CAST (v4l2object->pool), FALSE);
     gst_object_unref (v4l2object->pool);
     v4l2object->pool = NULL;

@@ -3,7 +3,7 @@
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
  *               2009 Texas Instruments, Inc - http://www.ti.com/
- *               2014 Renesas Electronics Corporation
+ *               2014-2015 Renesas Electronics Corporation
  *
  * gstv4l2bufferpool.h V4L2 buffer pool class
  *
@@ -96,6 +96,7 @@ GType gst_v4l2_buffer_pool_get_type (void);
 GstBufferPool *     gst_v4l2_buffer_pool_new     (GstV4l2Object *obj, GstCaps *caps);
 
 GstFlowReturn       gst_v4l2_buffer_pool_process (GstV4l2BufferPool * bpool, GstBuffer * buf);
+GstFlowReturn       gst_v4l2_buffer_pool_flush   (GstV4l2BufferPool * pool);
 
 G_END_DECLS
 

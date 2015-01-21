@@ -3,7 +3,7 @@
  * Copyright (C) 2001-2002 Ronald Bultje <rbultje@ronald.bitfreak.net>
  *               2006 Edgard Lima <edgard.lima@indt.org.br>
  *               2009 Texas Instruments, Inc - http://www.ti.com/
- *               2014 Renesas Electronics Corporation
+ *               2014-2015 Renesas Electronics Corporation
  *
  * gstv4l2bufferpool.c V4L2 buffer pool class
  *
@@ -1750,5 +1750,22 @@ start_failed:
   {
     GST_ERROR_OBJECT (obj->element, "failed to start streaming");
     return GST_FLOW_ERROR;
+  }
+}
+
+GstFlowReturn gst_v4l2_buffer_pool_flush (GstV4l2BufferPool * pool)
+{
+  GstBuffer *out;
+  int i;
+
+  /* Release all queued buffers.
+   * Dequeue buffers from driver first will be better, but it will
+   * not work in current environment because driver tries to keep
+   * one buffer to show on the screen */
+  for (i = 0; i < pool->num_allocated; i++) {
+    out = pool->buffers[i];
+
+    if (out)
+      gst_buffer_unref (out);
   }
 }
